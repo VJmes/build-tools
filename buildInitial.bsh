@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# -------------------------------------------------
+#
+#   buildInitial.bsh - A very basic, flat-file build script  
+#	which performs the bare-minimum Rocky or Alpine build.
+#
+#           Written: James Varoutsos
+#       Date: 05-Sep-2024        Version: 2.0
+#
+#   1.0 - Initial
+#	1.1	- Validated for Centos 8
+#	1.2 - Updated repository names + minor tweaks
+#	1.3 - Dropped Ubuntu + added Alpine
+#   2.0 - Minor refactor + removed private code
+#
+#   Useage:
+#		buildInitial.bsh [hostname] [username] <timezone>
+#
+# -------------------------------------------------
+
+set -o errexit		# Exit if any commands below fail
+
+# Defaults
+TMZN="Australia/Sydney";				# Default timezone
+GHDOTS="nix-dotfiles";					# Dotfiles repository
+GHSCPTS="usr-scripts";					# User scripts repository
+DEPS="git sysstat rsync wget tar vim tmux unzip lvm2 telegraf"	# Default apps
+
+[[ "$(id -u)" != 0 ]] && { echo "[ERROR] Not run as root."; exit 1; }	# Run as root
+[[ -z "$1" ]] && { echo "[ERROR] No hostname provided."; exit 3; }		# Hostname
+[[ -z "$2" ]] && { echo "[ERROR] No username provided."; exit 4; }		# Username
+[[ -n "$3" ]] || { TMZN=$3; } 	# Timezone
+
+echo "$1" > /etc/hostname
+rm -rf /etc/localtime && ln -s /usr/share/zoneinfo/"${TMZN}" /etc/localtime
+
+# For Fedora-like distributions
+if type dnf &> /dev/null; then
+	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
+		{ DEPS="${DEPS} open-vm-tools" }
+	echo -e "[INFO] Installing $DEPS"
+	dnf -qy install "$DEPS" epel-release bind-utils
+# For Alpine distributions
+elif type apk &> /dev/null; then
+	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
+		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg" }
+	sed -i 's/^#//g' /etc/apk/repositories && apk update
+	echo -e "[INFO] Installing $DEPS"
+	apk -q add "$DEPS" sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server
+else
+	echo "[ERROR] No compatible package manager found." && exit 5;
+fi
+
+# Distro-specific actions
+grep -q "rocky" /etc/os-release && \
+	{ rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit; } # Remove cockpit
+grep -q "alpine3.*" /etc/os-release && \
+	{ usermod --shell /bin/bash root; }	# Set bash as root default
+
+# Basic user creation
+if id "$2" &> /dev/null; then
+	echo "[WARN] User already exists, skipping user-creation."
+else
+	echo -e "[INFO] Creating the ${2} user."
+	useradd -ms /bin/bash -G users "$2" &> /dev/null
+	echo -e "[INFO] User $2 created, please set a password"
+	passwd "$2"
+fi
+mkdir -p /home/"${2}"/.ssh || exit 5;
+ssh-keygen -qt ed25519 -f "/home/${2}/.ssh/${2}@${1}" -N ''
+cat "/home/${2}/.ssh/${2}@${1}".pub > /home/"${2}"/.ssh/authorized_keys
+echo -e "[INFO] Write down/store private key:" && cat "/home/${2}/.ssh/${2}@${1}"
+
+sudoBins="/usr/bin/mkdir, /usr/bin/reboot"
+type systemctl &> /dev/null && syclSudoBins=", /usr/bin/systemctl, /usr/bin/journalctl"
+echo -e "$2\tALL=(ALL)\tALL\n$2\tALL=(ALL)\tNOPASSWD:${sudoBins}${syclSudoBins}" >> /etc/sudoers.d/"$2"
+chmod 440 /etc/sudoers.d/"$2"
+
+echo -e "[INFO] Cloning latest Linux profile"
+git clone --q --recurse-submodules "https://github.com/vjmes/${GHDOTS}.git" /tmp/dotfiles && \
+	rm -rf /tmp/dotfiles/{.git,.gitignore,.gitmodules,README.md,.vscode}
+rsync -qav --progress "/tmp/dotfiles/" "/root/" && ln -s ~/.bashrc ~/.profile
+rsync -qav --progress "/tmp/dotfiles/" "/home/$2/" && { 
+	ln -s /home/"$2".bashrc /home/"$2".profile; chown -R "$2:users" "/home/$2/"; }
+[[ -d "/home/rocky" ]] && { 
+	rsync -qav --progress "/tmp/dotfiles/" "/home/rocky/"; 
+	ln -s /home/rocky/.bashrc /home/rocky/.profile; chown -R rocky:rocky /home/rocky/; }
+
+echo -e "[INFO] Cloning Linux toolkit"
+git clone --q --recurse-submodules "https://github.com/vjmes/${GHSCPTS}.git" /usr/scripts	&& \
+	rm -rf rm -rf /usr/scripts/{.git,.gitignore,.gitmodules,README.md,.vscode}
+find /usr/scripts/ -type f -exec chmod 744 {} +
+
+# Set MOTD from local copy
+cp -rp motd.sh /etc/profile.d/
+
+rm -rf /tmp/dotfiles && echo -e "[GOOD] Finished inital build"
+echo -e "[INFO] Run /root/combined-configs/discoverDevice.bsh to review current state"
