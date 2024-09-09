@@ -37,13 +37,13 @@ rm -rf /etc/localtime && ln -s /usr/share/zoneinfo/"${TMZN}" /etc/localtime
 # For Fedora-like distributions
 if type dnf &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
-		{ DEPS="${DEPS} open-vm-tools" }
+		{ DEPS="${DEPS} open-vm-tools"; }
 	echo -e "[INFO] Installing $DEPS"
 	dnf -qy install "$DEPS" epel-release bind-utils
 # For Alpine distributions
 elif type apk &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
-		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg" }
+		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg"; }
 	sed -i 's/^#//g' /etc/apk/repositories && apk update
 	echo -e "[INFO] Installing $DEPS"
 	apk -q add "$DEPS" sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server
