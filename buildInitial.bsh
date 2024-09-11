@@ -38,24 +38,18 @@ rm -rf /etc/localtime && ln -s /usr/share/zoneinfo/"${TMZN}" /etc/localtime
 if type dnf &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
 		{ DEPS="${DEPS} open-vm-tools"; }
-	echo -e "[INFO] Installing $DEPS"
-	dnf -qy install "$DEPS" epel-release bind-utils
+	DEPS="${DEPS} open-vm-tools epel-release bind-utils"
+	echo -e "[INFO] Installing $DEPS" && dnf -qy install $DEPS
 # For Alpine distributions
 elif type apk &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
 		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg"; }
 	sed -i 's/^#//g' /etc/apk/repositories && apk update
-	echo -e "[INFO] Installing $DEPS"
-	apk -q add "$DEPS" sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server
+	DEPS="${DEPS} sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server rsyslog"
+	echo -e "[INFO] Installing $DEPS" && apk -q add $DEPS
 else
 	echo "[ERROR] No compatible package manager found." && exit 5;
 fi
-
-# Distro-specific actions
-grep -q "rocky" /etc/os-release && \
-	{ rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit; } # Remove cockpit
-grep -q "alpine3.*" /etc/os-release && \
-	{ usermod --shell /bin/bash root; }	# Set bash as root default
 
 # Basic user creation
 if id "$2" &> /dev/null; then
@@ -79,20 +73,57 @@ chmod 440 /etc/sudoers.d/"$2"
 echo -e "[INFO] Cloning latest Linux profile"
 git clone --q --recurse-submodules "https://github.com/vjmes/${GHDOTS}.git" /tmp/dotfiles && \
 	rm -rf /tmp/dotfiles/{.git,.gitignore,.gitmodules,README.md,.vscode}
+# Copy profile to root user
 rsync -qav --progress "/tmp/dotfiles/" "/root/" && ln -s ~/.bashrc ~/.profile
-rsync -qav --progress "/tmp/dotfiles/" "/home/$2/" && { 
+# Copy profile to custom user (If exists)
+[ -d "/home/$2" ] && { 
+rsync -qav --progress "/tmp/dotfiles/" "/home/$2/"; 
 	ln -s /home/"$2".bashrc /home/"$2".profile; chown -R "$2:users" "/home/$2/"; }
-[[ -d "/home/rocky" ]] && { 
+# Copy profile to rocky user (If exists)
+[ -d "/home/rocky" ] && { 
 	rsync -qav --progress "/tmp/dotfiles/" "/home/rocky/"; 
 	ln -s /home/rocky/.bashrc /home/rocky/.profile; chown -R rocky:rocky /home/rocky/; }
 
 echo -e "[INFO] Cloning Linux toolkit"
-git clone --q --recurse-submodules "https://github.com/vjmes/${GHSCPTS}.git" /usr/scripts	&& \
+git clone --q --recurse-submodules "https://github.com/vjmes/${GHSCPTS}.git" /usr/scripts && \
 	rm -rf rm -rf /usr/scripts/{.git,.gitignore,.gitmodules,README.md,.vscode}
 find /usr/scripts/ -type f -exec chmod 744 {} +
 
+echo -e "[INFO] Cloning this Build tools repository"
+git clone --q "https://github.com/vjmes/build-tools.git" /tmp/build	&& \
+	rm -rf rm -rf /tmp/build/{.git,.gitignore,.gitmodules,README.md,.vscode}
+find /tmp/build/ -type f -exec chmod 744 {} +
 # Set MOTD from local copy
-cp -rp motd.sh /etc/profile.d/
+cp -rp /tmp/build/motd.sh /etc/profile.d/
+
+# Fetch environment configutrations if hostname is set as part of a domain
+if [ -n ${HOSTNAME#*.} ]; then
+	echo -ne "[INFO] Environment '${HOSTNAME#*.}' detected from hostname - "
+	echo -e "Cloning domain-specific configurations repository"
+	git clone --q "https://${2}@github.com/${2}/${HOSTNAME#*.}-confs.git" /tmp/confs && \
+	rm -rf rm -rf /tmp/build/{.git,.gitignore,.gitmodules,README.md,.vscode}
+fi
+
+# Copy common configuration items
+if [ -d "/tmp/confs" ]; then
+	[ -f "/tmp/confs/sshd.conf" ] && { mv "/tmp/confs/sshd.conf" "/etc/ssh/sshd_config"; }
+	[ -f "/tmp/confs/resolv.conf" ] && { mv "/tmp/confs/resolv.conf" "/etc/resolv.conf"; }
+	[ -f "/tmp/confs/rsyslog.conf" ] && { mv "/tmp/confs/rsyslog.conf" "/etc/rsyslog.conf"; }
+	[ -d "/tmp/confs/scripts" ] && { 
+		find /tmp/confs/scripts/ -type f -exec chmod 744 {} +;
+		mv -r "/tmp/confs/scripts/" "/usr/scripts"; 
+	}
+fi
+
+# Final Distro-specific actions
+if grep -q "rocky" /etc/os-release; then
+	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 	# Remove cockpit
+elif grep -q "alpine3.*" /etc/os-release; then
+	usermod --shell /bin/bash root						# Set bash as default
+	rc-update del syslog boot && rc-service syslog stop # Disable default syslog
+	rc-update add rsyslog boot		# Enable rsyslog
+	rc-update open-vm-tools boot	# Enable open-vm-tools
+fi
 
 rm -rf /tmp/dotfiles && echo -e "[GOOD] Finished inital build"
-echo -e "[INFO] Run /root/combined-configs/discoverDevice.bsh to review current state"
+echo -e "[INFO] Ensure to remove temporary /tmp/build folder once complete"
