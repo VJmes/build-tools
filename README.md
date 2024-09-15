@@ -17,6 +17,16 @@ Performs the initial round of system configuration, allowing for the installatio
 buildInitial.bsh [hostname.fqdn] [username] <timezone>
 ```
 
+### buildFilesystem.bsh
+
+Builds a custom filesystem in alternate-disk mode where specific mountings are put on a seperate disk for performance, security or portability/backup reasons. At a minimum this will create a swap based on total physical memory and perform numerous helpful filesystem tweaks and adjustments.
+
+#### Usage
+
+```bash
+buildFilesystem.bsh <block-device>
+```
+
 ### motd.sh
 
-A very simple MOTD (Message of the day) script I use to get a snapshot of a host's information on login.
+A very simple MOTD (Message of the day) script I use to get a snapshot of a host's information at login.

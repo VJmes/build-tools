@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# -------------------------------------------------
+#
+#   buildFilesystem.bsh - Filesystem-specific build which
+#   can be run before or after the initial system build.
+#
+#           Written: James Varoutsos
+#       Date: 05-Sep-2024        Version: 1.0
+#
+#   1.0 - Migrated private code
+#
+#   Useage:
+#		buildInitial.bsh <second disk>
+#
+# -------------------------------------------------
+
+VG_NAME="vg_$(hostname -s)_mnts"		# Name formatting to use for volume-group
+LV_NAME="lv_$(hostname -s)"				# Base name formatting for logical volumes
+# Volume size as disk percentage (Should equal 100)
+HOME_VOL_PC=40
+VAR_VOL_PC=35
+LOG_VOL_PC=20
+TMP_VOL_PC=15
+
+#
+# Build filesystem mounts on the alternate disk
+#
+function createLV {
+	# $1 - LV Label
+	# $2 - Directory to copy
+	# $3 - percentage of space to occupy
+	# $4 - Filesystem flags (For fstab)
+
+	mntOpts="defaults";						# default fstab mount options
+	lvp="/dev/${VG_NAME}/${LV_NAME}_${1}"	# Logical volume name
+
+	[ -v "$4" ] && { mntOpts="$4"; }
+	
+	lvcreate -l $3%FREE -n "${LV_NAME}_${1}" "${VG_NAME}" &> /dev/null \
+		|| { echo "[ERROR] Unable to create logical volume for '$lvp'"; exit 5; }
+	mkfs.ext4 -q "$lvp" &> /dev/null \
+		|| { echo "[ERROR] Unable to create filesystem for '$lvp'"; exit 6; }
+	
+	echo -e "$lvp\t${2}\t\text4\t$mntOpts\t1\t2" >> /etc/fstab
+
+	mkdir -p /mnt/migrate && mount "$lvp" /mnt/migrate
+	mv "${2}/{,.[^.]}*" /mnt/migrate || { echo -e "[ERROR] Unable to migrate '$lvp'"; exit 7; }
+	umount /mnt/migrate
+	mount -a && echo "[GOOD] Filesystem mgirated to '$lvp'"
+}
+
+#
+# Dynamically create swap-space
+#
+function createSwap {
+	swapSize=2		# Set the swap multiplier (of physical memory)
+	memSize=$(cat /proc/meminfo | grep 'MemTotal' | tr -s ' ' | cut -f 2 -d ' ')
+
+	fallocate -l "$(expr $memSize \* $swapSize)KiB" /swap || \
+	{ echo -e "$[ERROR] Cannot allocate $(expr $memSize \* $SWAP_MP)KiB for swap."; exit 20; }
+
+	chmod 600 /swap && mkswap /swap
+	swapon /swap || { echo -e "[ERROR] Unable to enable swap"; exit 30; }
+	echo "[GOOD] Swap created successfully."
+}
+
+#
+# Main runblock
+#
+[[ "$(id -u)" != 0 ]] && { echo "[ERROR] Not run as root."; exit 1; }		# Check for root
+! type lvm &> /dev/null && { echo "[ERROR] LVM not installed"; exit 2; } 	# Check for LVM
+
+# Detect and migrate filesystem-parts to alternate disk
+if [ ! -b "$1" ]; then
+	echo "[ERROR] '$1' is not a block device - Skipping alternate disk mode"
+else
+	echo "[NOTICE] Formatting '$1' - Build system using alternate disk mode"
+	pvcreate "${1}" && vgcreate "vg_$(hostname -s)_mnts" "${1}"
+	# These are some rough defaults
+	createLV home /home ${HOME_VOL_PC}
+	createLV var /var ${VAR_VOL_PC}
+	createLV log /var/log ${LOG_VOL_PC}
+	createLV tmp /tmp ${TMP_VOL_PC} 
+fi
+
+# Create swap if does not exist
+[ ! -d "/swap" ] && { createSwap; }
+
+# Set cron to clear /tmp weekly
