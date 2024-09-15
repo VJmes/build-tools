@@ -12,6 +12,14 @@ Build Tools performs the first-stage configuration of a clean linux install alon
 Performs the initial round of system configuration, allowing for the installation of a standard set of packages, pulls down helpful customization repositories and sets up a basic administrator account to work with.
 
 #### Usage
+On a new host you can pull down the buildInitial to perform a heap of first-run actions prior to performing anything else, can grab the file directly with:
+```bash
+# Wget
+wget -O buildInitial.bsh https://raw.githubusercontent.com/VJmes/build-tools/main/buildInitial.bsh
+
+# Curl
+curl -O https://raw.githubusercontent.com/VJmes/build-tools/main/buildInitial.bsh
+```
 
 ```bash
 buildInitial.bsh [hostname.fqdn] [username] <timezone>
