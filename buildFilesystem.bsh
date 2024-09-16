@@ -31,22 +31,24 @@ function createLV {
 	# $3 - percentage of space to occupy
 	# $4 - Filesystem flags (For fstab)
 
-	mntOpts="defaults";						# default fstab mount options
+	mntOpts="defaults"						# default fstab mount options
 	lvp="/dev/${VG_NAME}/${LV_NAME}_${1}"	# Logical volume name
 
-	[ -v "$4" ] && { mntOpts="$mntOpts,$4"; }
+	[ ! -z "$4" ] && { mntOpts="$mntOpts,$4"; }
 	
+	echo "[NOTICE] Creating filesystem ${LV_NAME}_${1} using ${3}\% of volume ${VG_NAME}." 
+
 	lvcreate -l $3%FREE -n "${LV_NAME}_${1}" "${VG_NAME}" &> /dev/null \
 		|| { echo "[ERROR] Unable to create logical volume for '$lvp'"; exit 5; }
 	mkfs.xfs -q "$lvp" &> /dev/null \
 		|| { echo "[ERROR] Unable to create filesystem for '$lvp'"; exit 6; }
 	
-	echo -e "$lvp\t${2}\t\text4\t$mntOpts\t1\t2" >> /etc/fstab
+	echo -e "$lvp\t${2}\t\txfs\t$mntOpts\t1\t2" >> /etc/fstab
 
 	mkdir -p /mnt/migrate && mount "$lvp" /mnt/migrate
 	rsync -qraPX "$2/" /mnt/migrate || { echo -e "[ERROR] Unable to migrate '$lvp'"; exit 7; }
 	umount /mnt/migrate
-	mount -a && echo "[GOOD] Filesystem mgirated to '$lvp'"
+	mount "$lvp" "$2"  && echo "[GOOD] Filesystem mgirated to '$lvp'"
 }
 
 #
@@ -76,6 +78,7 @@ if [ ! -b "$1" ]; then
 else
 	echo "[NOTICE] Formatting '$1' - Build system using alternate disk mode"
 	pvcreate "${1}" && vgcreate "vg_$(hostname -s)_mnts" "${1}"
+	echo "[NOTICE] Logical volume vg_$(hostname -s)_mnts created on disk ${1}."
 	# These are some rough defaults
 	createLV home /home ${HOME_VOL_PC} "nosuid,nodev,noexec"
 	createLV var /var ${VAR_VOL_PC}

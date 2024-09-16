@@ -110,6 +110,7 @@ fi
 # Copy common configuration items
 if [ -d "/tmp/confs" ]; then
 	[ -f "/tmp/confs/sshd.conf" ] && { mv "/tmp/confs/sshd.conf" "/etc/ssh/sshd_config"; }
+	[ -f "/tmp/confs/chrony.conf" ] && { mv "/tmp/confs/chrony.conf" "/etc/chrony.conf"; }
 	[ -f "/tmp/confs/resolv.conf" ] && { mv "/tmp/confs/resolv.conf" "/etc/resolv.conf"; }
 	[ -f "/tmp/confs/rsyslog.conf" ] && { mv "/tmp/confs/rsyslog.conf" "/etc/rsyslog.conf"; }
 	[ -d "/tmp/confs/scripts" ] && { 
@@ -122,6 +123,7 @@ fi
 if grep -q "rocky" /etc/os-release; then
 	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 	# Remove cockpit
 elif grep -q "alpine" /etc/os-release; then
+	mv -f /etc/chrony.conf /etc/chrony/chrony.conf && rc-service chronyd restart
 	usermod --shell /bin/bash root						# Set bash as default
 	rc-update del syslog boot && rc-service syslog stop # Disable default syslog
 	rc-update add rsyslog boot			# Enable rsyslog
