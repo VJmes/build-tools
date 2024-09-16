@@ -17,10 +17,10 @@
 VG_NAME="vg_$(hostname -s)_mnts"		# Name formatting to use for volume-group
 LV_NAME="lv_$(hostname -s)"				# Base name formatting for logical volumes
 # Volume size as disk percentage (Should equal 100)
-HOME_VOL_PC=40
-VAR_VOL_PC=35
-LOG_VOL_PC=20
-TMP_VOL_PC=15
+HOME_VOL_PC=35
+VAR_VOL_PC=40
+LOG_VOL_PC=15
+TMP_VOL_PC=10
 
 #
 # Build filesystem mounts on the alternate disk
@@ -34,17 +34,17 @@ function createLV {
 	mntOpts="defaults";						# default fstab mount options
 	lvp="/dev/${VG_NAME}/${LV_NAME}_${1}"	# Logical volume name
 
-	[ -v "$4" ] && { mntOpts="$4"; }
+	[ -v "$4" ] && { mntOpts="$mntOpts,$4"; }
 	
 	lvcreate -l $3%FREE -n "${LV_NAME}_${1}" "${VG_NAME}" &> /dev/null \
 		|| { echo "[ERROR] Unable to create logical volume for '$lvp'"; exit 5; }
-	mkfs.ext4 -q "$lvp" &> /dev/null \
+	mkfs.xfs -q "$lvp" &> /dev/null \
 		|| { echo "[ERROR] Unable to create filesystem for '$lvp'"; exit 6; }
 	
 	echo -e "$lvp\t${2}\t\text4\t$mntOpts\t1\t2" >> /etc/fstab
 
 	mkdir -p /mnt/migrate && mount "$lvp" /mnt/migrate
-	mv "${2}/{,.[^.]}*" /mnt/migrate || { echo -e "[ERROR] Unable to migrate '$lvp'"; exit 7; }
+	rsync -qraPX "$2/" /mnt/migrate || { echo -e "[ERROR] Unable to migrate '$lvp'"; exit 7; }
 	umount /mnt/migrate
 	mount -a && echo "[GOOD] Filesystem mgirated to '$lvp'"
 }
@@ -77,13 +77,14 @@ else
 	echo "[NOTICE] Formatting '$1' - Build system using alternate disk mode"
 	pvcreate "${1}" && vgcreate "vg_$(hostname -s)_mnts" "${1}"
 	# These are some rough defaults
-	createLV home /home ${HOME_VOL_PC}
+	createLV home /home ${HOME_VOL_PC} "nosuid,nodev,noexec"
 	createLV var /var ${VAR_VOL_PC}
-	createLV log /var/log ${LOG_VOL_PC}
-	createLV tmp /tmp ${TMP_VOL_PC} 
+	createLV log /var/log ${LOG_VOL_PC}	"nosuid,nodev,noexec" && rm -rf /var/log
+	createLV tmp /tmp ${TMP_VOL_PC} "nosuid,nodev,noexec"
 fi
 
 # Create swap if does not exist
 [ ! -d "/swap" ] && { createSwap; }
 
 # Set cron to clear /tmp weekly
+echo "0 2 * * MON rm -rf /tmp/* 2> /dev/null 1>&2 && logger 'Flushed /tmp'" >> /var/spool/cron/root

@@ -24,7 +24,7 @@ set -o errexit		# Exit if any commands below fail
 TMZN="Australia/Sydney";				# Default timezone
 GHDOTS="nix-dotfiles";					# Dotfiles repository
 GHSCPTS="usr-scripts";					# User scripts repository
-DEPS="git sysstat rsync wget tar vim tmux unzip lvm2 telegraf"	# Default apps
+DEPS="git sysstat rsync wget tar vim tmux unzip lvm2 telegraf xfsprogs"	# Default apps
 
 [[ "$(id -u)" != 0 ]] && { echo "[ERROR] Not run as root."; exit 1; }	# Run as root
 [[ -z "$1" ]] && { echo "[ERROR] No hostname provided."; exit 3; }		# Hostname
@@ -94,7 +94,9 @@ echo -e "[INFO] Cloning this Build tools repository"
 git clone --q "https://github.com/vjmes/build-tools.git" /tmp/build	&& \
 	rm -rf rm -rf /tmp/build/{.git,.gitignore,.gitmodules,README.md,.vscode}
 find /tmp/build/ -type f -exec chmod 744 {} +
-# Set MOTD from local copy
+
+# Flush & Set MOTD from local copy
+[ -s /etc/motd ] && { : > /etc/motd; }
 cp -rp /tmp/build/motd.sh /etc/profile.d/
 
 # Fetch environment configutrations if hostname is set as part of a domain
