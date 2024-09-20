@@ -24,7 +24,7 @@ set -o errexit		# Exit if any commands below fail
 TMZN="Australia/Sydney";				# Default timezone
 GHDOTS="nix-dotfiles";					# Dotfiles repository
 GHSCPTS="usr-scripts";					# User scripts repository
-DEPS="git sysstat rsync wget tar vim tmux unzip lvm2 telegraf xfsprogs"	# Default apps
+DEPS="git sysstat rsync wget tar vim tmux unzip lvm2 xfsprogs"	# Default apps
 
 [[ "$(id -u)" != 0 ]] && { echo "[ERROR] Not run as root."; exit 1; }	# Run as root
 [[ -z "$1" ]] && { echo "[ERROR] No hostname provided."; exit 3; }		# Hostname
@@ -43,7 +43,7 @@ if type dnf &> /dev/null; then
 # For Alpine distributions
 elif type apk &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
-		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg"; }
+		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg mandoc man-pages lvm2-doc wget-doc tmux-doc vim-doc git-doc tar-doc rsync-doc telegraf"; }
 	sed -i 's/^#//g' /etc/apk/repositories && apk update
 	DEPS="${DEPS} sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server rsyslog"
 	echo -e "[INFO] Installing $DEPS" && apk -q add $DEPS
@@ -121,6 +121,8 @@ fi
 
 # Distro-specific actions
 if grep -q "rocky" /etc/os-release; then
+	cp -rp /tmp/build/yum.repos.d/ /etc/yum.repos.d/ && chown root:root -R /etc/yum.repos.d/
+	dnf -qy install telegraf								# Install extra repository packages
 	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 	# Remove cockpit
 elif grep -q "alpine" /etc/os-release; then
 	mv -f /etc/chrony.conf /etc/chrony/chrony.conf && rc-service chronyd restart
