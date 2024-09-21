@@ -43,7 +43,8 @@ if type dnf &> /dev/null; then
 # For Alpine distributions
 elif type apk &> /dev/null; then
 	grep -q "VMware" /sys/devices/virtual/dmi/id/sys_vendor && \
-		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg mandoc man-pages lvm2-doc wget-doc tmux-doc vim-doc git-doc tar-doc rsync-doc telegraf"; }
+		{ DEPS="${DEPS} open-vm-tools open-vm-tools-guestinfo open-vm-tools-deploypkg mandoc man-pages lvm2-doc wget-doc tmux-doc vim-doc git-doc tar-doc rsync-doc telegraf tzdata
+"; }
 	sed -i 's/^#//g' /etc/apk/repositories && apk update
 	DEPS="${DEPS} sudo coreutils date curl wget git xz shadow grep util-linux-misc openssh-sftp-server rsyslog"
 	echo -e "[INFO] Installing $DEPS" && apk -q add $DEPS
@@ -121,9 +122,11 @@ fi
 
 # Distro-specific actions
 if grep -q "rocky" /etc/os-release; then
-	cp -rp /tmp/build/yum.repos.d/ /etc/yum.repos.d/ && chown root:root -R /etc/yum.repos.d/
-	dnf -qy install telegraf								# Install extra repository packages
-	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 	# Remove cockpit
+	cp -rp /tmp/build/repos/yum.repos.d/ /etc/ && chown root:root -R /etc/yum.repos.d/
+	dnf -qy install telegraf btop									# Install extra packages
+	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 			# Remove cockpit
+	restorecon /etc/chrony.conf	&& systemctl restart chronyd 		# Fix chronyd (SELinux)
+	restorecon /etc/rsyslog.conf	&& systemctl restart rsyslog 	# Fix chronyd (SELinux)
 elif grep -q "alpine" /etc/os-release; then
 	mv -f /etc/chrony.conf /etc/chrony/chrony.conf && rc-service chronyd restart
 	usermod --shell /bin/bash root						# Set bash as default
