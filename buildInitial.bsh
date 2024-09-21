@@ -126,6 +126,9 @@ if grep -q "rocky" /etc/os-release; then
 	dnf -qy install telegraf btop									# Install extra packages
 	rm -f /etc/issue.d/cockpit.issue /etc/motd.d/cockpit 			# Remove cockpit
 	restorecon /etc/chrony.conf	&& systemctl restart chronyd 		# Fix chronyd (SELinux)
+	sed -i 's/^#>//g' /etc/rsyslog.conf								
+	firewall-cmd  --add-port=5140/udp  --zone=public  --permanent
+	semanage port -a -t syslogd_port_t -p udp 5140
 	restorecon /etc/rsyslog.conf	&& systemctl restart rsyslog 	# Fix chronyd (SELinux)
 elif grep -q "alpine" /etc/os-release; then
 	mv -f /etc/chrony.conf /etc/chrony/chrony.conf && rc-service chronyd restart
