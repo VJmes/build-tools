@@ -105,7 +105,7 @@ if [ -n ${HOSTNAME#*.} ]; then
 	echo -ne "[INFO] Environment '${HOSTNAME#*.}' detected from hostname - "
 	echo -e "Cloning domain-specific configurations repository"
 	git clone --q "https://${2}@github.com/${2}/${HOSTNAME#*.}-confs.git" /tmp/confs && \
-	rm -rf rm -rf /tmp/build/{.git,.gitignore,.gitmodules,README.md,.vscode}
+	rm -rf /tmp/build/{.git,.gitignore,.gitmodules,README.md,.vscode}
 fi
 
 # Copy common configuration items
@@ -134,6 +134,7 @@ elif grep -q "alpine" /etc/os-release; then
 	mv -f /etc/chrony.conf /etc/chrony/chrony.conf && rc-service chronyd restart
 	usermod --shell /bin/bash root						# Set bash as default
 	rc-update del syslog boot && rc-service syslog stop # Disable default syslog
+	sed -i 's/^#-//g' /etc/rsyslog.conf	
 	rc-update add rsyslog boot			# Enable rsyslog
 	rc-update add open-vm-tools boot	# Enable open-vm-tools
 fi
